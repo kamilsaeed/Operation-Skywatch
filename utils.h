@@ -18,16 +18,13 @@
 // Using the standard namespace as requested
 using namespace std;
 
+const int MAX_JETS = 20;
+
 /**
-* @brief Message from Jet Generator to ATC Tower.
-* Sent once when a new jet is created.
+* @brief Message from Jet Generator OR Console to ATC Tower.
 */
 struct JetMessage 
 {
-    // pid_t jet_pid;      // The REAL PID of the forked jet
-    // int atc_read_fd;    // The FD for ATC to read from (Jet's write-end)
-    // int atc_write_fd;   // The FD for ATC to write to (Jet's read-end)
-    // int initial_fuel;   // The starting fuel
     int initial_fuel;
 };
 
@@ -39,7 +36,7 @@ struct JetMessage
 enum AtcCommand
 {
     CMD_START_LANDING,
-    CMD_REFUEL,
+    CMD_REFUEL,       // <-- NEW
     CMD_SHUTDOWN
 };
 
@@ -51,7 +48,14 @@ enum JetStatus
     STATUS_FUEL_LOW,    // Warning
     STATUS_EMERGENCY,   // Critical, move to Q1
     STATUS_LANDED,      // Jet is done, process can be terminated
-    STATUS_WAITING_FUEL // Jet is waiting to refuel (for Q3)
+    STATUS_WAITING_FUEL,// Jet is waiting to refuel (for Q3)
+    
+    STATUS_IN_QUEUE,    // Jet is waiting in a queue
+    STATUS_LANDING_CMD, // Command sent, waiting for STATUS_LANDED
+    
+    // --- NEW FOR REFUELING ---
+    STATUS_REFUELING,   // Jet is currently refueling (runway busy)
+    STATUS_REFUELED     // Jet has finished refueling
 };
 
 // --- Message Structs for Jet <-> ATC Pipes ---

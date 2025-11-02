@@ -1,0 +1,136 @@
+[20:01:57] --- Simulation Started by Student Name (23i-2035) ---
+[20:01:57] Seed set to 2035.
+[20:01:57] [ATC Tower 93411]: Jet Generator process started (PID: 93421).
+[20:01:57] [ATC Display Thread]: Display started.
+[20:01:57] [Scheduler Thread]: Clock started.
+[20:01:57] [ATC Tower]: Main I/O loop started.
+[20:01:57] [Console Thread]: Ready for commands.
+[20:01:57] [Status]: Q1=0, Q2=0, Q3=0, Runway=IDLE (Jet 0)
+[20:01:59] [ATC Tower]: Creating new jet with 60 fuel.
+[20:01:59] [ATC Tower]: Forked new jet (PID 93427)
+[20:01:59] [Status]: Q1=0, Q2=0, Q3=0, Runway=IDLE (Jet 0)
+[20:01:59] [Scheduler]: Runway assigned to Jet 93427 for LANDING (from Q2).
+[20:02:00] [ATC Tower]: Creating new jet with 60 fuel.
+[20:02:00] [ATC Tower]: Forked new jet (PID 93428)
+[20:02:01] [Status]: Q1=0, Q2=2, Q3=0, Runway=BUSY (Jet 93427)
+[20:02:01] [ATC Tower]: Creating new jet with 15 fuel.
+[20:02:01] [ATC Tower]: Forked new jet (PID 93429)
+[20:02:03] [ATC Tower]: Creating new jet with 35 fuel.
+[20:02:03] [ATC Tower]: Forked new jet (PID 93438)
+[20:02:03] [Status]: Q1=0, Q2=4, Q3=0, Runway=BUSY (Jet 93427)
+[20:02:04] [ATC Tower]: Creating new jet with 60 fuel.
+[20:02:04] [ATC Tower]: Forked new jet (PID 93439)
+[20:02:04] [ATC Tower]: Jet Generator has shut down.
+[20:02:04] [Scheduler]: RR QUANTUM expired for Jet 93427. Demoting to Q3.
+[20:02:04] [Scheduler]: Jet 93427 moved from Q2 to Q3.
+[20:02:04] [Scheduler]: Runway assigned to Jet 93428 for LANDING (from Q2).
+[20:02:05] [Status]: Q1=0, Q2=4, Q3=1, Runway=BUSY (Jet 93428)
+[20:02:06] [Scheduler]: Jet 93427 has landed and is being cleared.
+[20:02:06] [ATC Tower]: Cleaned up jet 93427. 4 jets remaining.
+[20:02:06] [ATC Tower]: EMERGENCY from Jet 93429! (Fuel: 10)
+[20:02:06] [Scheduler]: Jet 93429 moved to Q1 (Emergency).
+[20:02:06] [Scheduler]: Jet 93429 moved from Q2 to Q1.
+[20:02:06] [Scheduler]: Emergency Jet 93429 preempting non-emergency Jet 93428.
+[20:02:06] [Scheduler]: PREEMPTING runway jet 93428!
+[20:02:07] [Status]: Q1=1, Q2=3, Q3=0, Runway=IDLE (Jet 0)
+[20:02:07] [Scheduler]: Runway assigned to EMERGENCY Jet 93429 (from Q1).
+[20:02:09] [Status]: Q1=1, Q2=3, Q3=0, Runway=BUSY (Jet 93429)
+[20:02:10] [Scheduler]: Jet 93428 has landed and is being cleared.
+[20:02:10] [ATC Tower]: Cleaned up jet 93428. 3 jets remaining.
+[20:02:11] [Status]: Q1=1, Q2=2, Q3=0, Runway=BUSY (Jet 93429)
+[20:02:13] [Status]: Q1=1, Q2=2, Q3=0, Runway=BUSY (Jet 93429)
+[20:02:13] [Scheduler]: Jet 93429 has landed and is being cleared.
+[20:02:13] [ATC Tower]: Cleaned up jet 93429. 2 jets remaining.
+[20:02:13] [Scheduler]: Runway assigned to Jet 93438 for LANDING (from Q2).
+[20:02:13] [ATC Tower]: Refuel request from Jet 93438 (Fuel: 25).
+[20:02:13] [Scheduler]: Jet 93438 moved to Q3 for refueling.
+[20:02:13] [Scheduler]: Jet 93438 moved from Q2 to Q3.
+[20:02:19] [Scheduler]: Jet 93438 has landed and is being cleared.
+[20:02:19] [ATC Tower]: Cleaned up jet 93438. 1 jets remaining.
+[20:02:19] [Scheduler]: Runway assigned to Jet 93439 for LANDING (from Q2).
+[20:02:19] [Status]: Q1=0, Q2=1, Q3=0, Runway=BUSY (Jet 93439)
+[20:02:21] [Status]: Q1=0, Q2=1, Q3=0, Runway=BUSY (Jet 93439)
+[20:02:23] [Status]: Q1=0, Q2=1, Q3=0, Runway=BUSY (Jet 93439)
+[20:02:24] [Scheduler]: RR QUANTUM expired for Jet 93439. Demoting to Q3.
+[20:02:24] [Scheduler]: Jet 93439 moved from Q2 to Q3.
+[20:02:25] [Scheduler]: Jet 93439 has landed and is being cleared.
+[20:02:25] [ATC Tower]: Cleaned up jet 93439. 0 jets remaining.
+[20:02:25] [ATC Tower]: All jets have landed. Shutting down.
+[20:02:25] [ATC Tower]: Cleaning up resources.
+[20:02:25] [Status]: Q1=0, Q2=0, Q3=0, Runway=IDLE (Jet 0)
+[20:02:25] [Scheduler Thread]: Clock shutting down.
+[20:02:26] [Console Thread]: Shutting down.
+[20:02:28] [ATC Display Thread]: Display shutting down.
+[20:08:51] 
+--- Simulation Started by Student Name (23i-2035) ---
+[20:08:51] Seed set to 2035.
+[20:08:51] [ATC Tower 93872]: Jet Generator process started (PID: 93890).
+[20:08:51] [ATC Display Thread]: Display started.
+[20:08:51] [Scheduler Thread]: Clock started.
+[20:08:51] [Status]: Q1=0, Q2=0, Q3=0, Runway=IDLE (Jet 0)
+[20:08:51] [Console Thread]: Ready for commands.
+[20:08:51] [ATC Tower]: Main I/O loop started.
+[20:08:53] [ATC Tower]: Creating new jet with 60 fuel.
+[20:08:53] [ATC Tower]: Forked new jet (PID 93901)
+[20:08:53] [Status]: Q1=0, Q2=1, Q3=0, Runway=IDLE (Jet 0)
+[20:08:53] [Scheduler]: Runway assigned to Jet 93901 for LANDING (from Q2).
+[20:08:54] [ATC Tower]: Creating new jet with 60 fuel.
+[20:08:54] [ATC Tower]: Forked new jet (PID 93903)
+[20:08:55] [ATC Tower]: Creating new jet with 15 fuel.
+[20:08:55] [ATC Tower]: Forked new jet (PID 93907)
+[20:08:55] [Status]: Q1=0, Q2=3, Q3=0, Runway=BUSY (Jet 93901)
+[20:08:57] [ATC Tower]: Creating new jet with 35 fuel.
+[20:08:57] [ATC Tower]: Forked new jet (PID 93908)
+[20:08:57] [Status]: Q1=0, Q2=4, Q3=0, Runway=BUSY (Jet 93901)
+[20:08:58] [ATC Tower]: Creating new jet with 60 fuel.
+[20:08:58] [ATC Tower]: Forked new jet (PID 93911)
+[20:08:58] [ATC Tower]: Jet Generator has shut down.
+[20:08:58] [Scheduler]: RR QUANTUM expired for Jet 93901. Demoting to Q3.
+[20:08:58] [Scheduler]: Jet 93901 moved from Q2 to Q3.
+[20:08:58] [Scheduler]: Runway assigned to Jet 93903 for LANDING (from Q2).
+[20:08:59] [Status]: Q1=0, Q2=4, Q3=1, Runway=BUSY (Jet 93903)
+[20:08:59] [Scheduler]: Jet 93901 has landed and is being cleared.
+[20:08:59] [ATC Tower]: Cleaned up jet 93901. 4 jets remaining.
+[20:09:00] [ATC Tower]: EMERGENCY from Jet 93907! (Fuel: 10)
+[20:09:00] [Scheduler]: Jet 93907 moved to Q1 (Emergency).
+[20:09:00] [Scheduler]: Jet 93907 moved from Q2 to Q1.
+[20:09:00] [Scheduler]: Emergency Jet 93907 preempting non-emergency Jet 93903.
+[20:09:00] [Scheduler]: PREEMPTING runway jet 93903!
+[20:09:01] [Status]: Q1=1, Q2=3, Q3=0, Runway=IDLE (Jet 0)
+[20:09:01] [Scheduler]: Runway assigned to EMERGENCY Jet 93907 (from Q1).
+[20:09:03] [Status]: Q1=1, Q2=3, Q3=0, Runway=BUSY (Jet 93907)
+[20:09:04] [Scheduler]: Jet 93903 has landed and is being cleared.
+[20:09:04] [ATC Tower]: Cleaned up jet 93903. 3 jets remaining.
+[20:09:05] [Status]: Q1=1, Q2=2, Q3=0, Runway=BUSY (Jet 93907)
+[20:09:07] [Status]: Q1=1, Q2=2, Q3=0, Runway=BUSY (Jet 93907)
+[20:09:07] [Scheduler]: Jet 93907 has landed and is being cleared.
+[20:09:07] [ATC Tower]: Cleaned up jet 93907. 2 jets remaining.
+[20:09:07] [ATC Tower]: Refuel request from Jet 93908 (Fuel: 25).
+[20:09:07] [Scheduler]: Jet 93908 moved to Q3 for refueling.
+[20:09:07] [Scheduler]: Jet 93908 moved from Q2 to Q3.
+[20:09:12] [ATC Tower]: Low fuel warning from Jet 93908 (Fuel: 20).
+[20:09:12] [Scheduler]: Runway assigned to Jet 93911 for LANDING (from Q2).
+[20:09:12] [Status]: Q1=0, Q2=1, Q3=1, Runway=BUSY (Jet 93911)
+[20:09:14] [Status]: Q1=0, Q2=1, Q3=1, Runway=BUSY (Jet 93911)
+[20:09:16] [Status]: Q1=0, Q2=1, Q3=1, Runway=BUSY (Jet 93911)
+[20:09:17] [Scheduler]: RR QUANTUM expired for Jet 93911. Demoting to Q3.
+[20:09:17] [Scheduler]: Jet 93911 moved from Q2 to Q3.
+[20:09:18] [Scheduler]: Jet 93911 has landed and is being cleared.
+[20:09:18] [ATC Tower]: Cleaned up jet 93911. 1 jets remaining.
+[20:09:18] [Status]: Q1=0, Q2=0, Q3=1, Runway=IDLE (Jet 0)
+[20:09:20] [Status]: Q1=0, Q2=0, Q3=1, Runway=IDLE (Jet 0)
+[20:09:22] [Status]: Q1=0, Q2=0, Q3=1, Runway=IDLE (Jet 0)
+[20:09:22] [ATC Tower]: EMERGENCY from Jet 93908! (Fuel: 10)
+[20:09:22] [Scheduler]: Jet 93908 moved to Q1 (Emergency).
+[20:09:22] [Scheduler]: Jet 93908 moved from Q3 to Q1.
+[20:09:22] [Scheduler]: Runway assigned to EMERGENCY Jet 93908 (from Q1).
+[20:09:24] [Status]: Q1=1, Q2=0, Q3=0, Runway=BUSY (Jet 93908)
+[20:09:26] [Status]: Q1=1, Q2=0, Q3=0, Runway=BUSY (Jet 93908)
+[20:09:28] [Scheduler]: Jet 93908 has landed and is being cleared.
+[20:09:28] [ATC Tower]: Cleaned up jet 93908. 0 jets remaining.
+[20:09:28] [ATC Tower]: All jets have landed. Shutting down.
+[20:09:28] [ATC Tower]: Cleaning up resources.
+[20:09:28] [Status]: Q1=0, Q2=0, Q3=0, Runway=IDLE (Jet 0)
+[20:09:28] [Scheduler Thread]: Clock shutting down.
+[20:09:29] [Console Thread]: Shutting down.
+[20:09:30] [ATC Display Thread]: Display shutting down.
