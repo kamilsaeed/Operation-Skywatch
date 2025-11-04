@@ -15,11 +15,13 @@ int atc_write_fd;
 
 const char* my_jet_id = "UNKNOWN-ID";
 
-// ... (send_status function is unchanged) ...
+/**
+ * @brief MODIFIED: Removed all cout statements
+ * Only sends messages back to ATC tower
+ */
 void send_status(JetStatus status, int data = 0) 
 {
-    cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-         << "): Sending Status " << status << endl;
+    // --- REMOVED cout ---
          
     JetFeedbackMessage msg;
     msg.status = status;
@@ -60,15 +62,15 @@ void* fuel_thread_loop(void* arg)
         }
     }
     
-    cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-         << "): Fuel thread exiting." << endl;
+    // --- REMOVED cout ---
     return NULL;
 }
 
 
 /**
  * @brief The main loop for the jet process.
- * MODIFIED: Landing time is now 6 seconds
+ * MODIFIED: Landing time is 12s, Refuel is 10s
+ * MODIFIED: Removed all cout statements
  */
 void run_jet_main_loop() 
 {
@@ -81,8 +83,7 @@ void run_jet_main_loop()
         if (bytes_read <= 0) 
         {
             if (bytes_read == 0) {
-                cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-                     << "): ATC closed pipe. Exiting." << endl;
+                // --- REMOVED cout ---
             } else {
                 perror("Jet: Pipe read error");
             }
@@ -94,30 +95,27 @@ void run_jet_main_loop()
         {
             is_landing = true;
             
-            cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-                 << "): Received landing command. Simulating landing." << endl;
+            // --- REMOVED cout ---
             
-            // --- MODIFIED: Landing now takes 6 seconds ---
-            sleep(6); 
+            // --- MODIFIED: Landing now takes 12 seconds ---
+            sleep(12); 
             
-            cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-                 << "): Landing complete." << endl;
+            // --- REMOVED cout ---
                  
             send_status(STATUS_LANDED);
             keep_running = false;
         }
         else if (command.command == CMD_REFUEL)
         {
-            cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-                 << "): Received refuel command. Simulating refueling." << endl;
+            // --- REMOVED cout ---
                  
             send_status(STATUS_REFUELING); 
             
-            sleep(5); // Simulate 5-second refuel
+            // --- MODIFIED: Refuel now takes 10 seconds ---
+            sleep(10);
             my_fuel += 75; 
             
-            cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() 
-                 << "): Refuel complete. New Fuel: " << my_fuel << endl;
+            // --- REMOVED cout ---
             
             send_status(STATUS_REFUELED, my_fuel);
         }
@@ -125,11 +123,14 @@ void run_jet_main_loop()
 }
 
 
-// ... (main function is unchanged) ...
+/**
+ * @brief MODIFIED: Removed all cout statements
+ */
 int main(int argc, char* argv[]) 
 {
     if (argc != 5) 
     {
+        // Keep this one cout for critical argument errors
         cout << "Jet Process: Invalid arguments. " << "Expected: <read_fd> <write_fd> <fuel> <jet_id>" << endl;
         return 1;
     }
@@ -139,7 +140,7 @@ int main(int argc, char* argv[])
     int initial_fuel = atoi(argv[3]);
     my_jet_id = argv[4];
     
-    cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() << "): Process started. Fuel: " << initial_fuel << endl;
+    // --- REMOVED cout ---
 
     pthread_t fuel_thread_id;
     if (pthread_create(&fuel_thread_id, NULL, fuel_thread_loop, (void*)(long)initial_fuel) != 0) 
@@ -150,7 +151,7 @@ int main(int argc, char* argv[])
     
     run_jet_main_loop();
     
-    cout << "[UAV-" << STUDENT_ROLLNO << "] (" << my_jet_id << ", PID " << getpid() << "): Shutting down." << endl;
+    // --- REMOVED cout ---
         
     pthread_join(fuel_thread_id, NULL);
     
@@ -159,3 +160,4 @@ int main(int argc, char* argv[])
     
     return 0;
 }
+

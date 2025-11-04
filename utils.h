@@ -42,15 +42,16 @@ enum AtcCommand
 
 /**
  * @brief Status messages sent FROM a Jet TO the ATC Tower.
+ * --- MODIFIED: Re-ordered so STATUS_IN_QUEUE is 0 for clearer logging ---
  */
 enum JetStatus 
 {
+    STATUS_IN_QUEUE,    // Jet is waiting in a queue (NOW 0)
     STATUS_FUEL_LOW,    // Warning
     STATUS_EMERGENCY,   // Critical, move to Q1
-    STATUS_LANDED,      // Jet is done, process can be terminated
+    STATUS_LANDED,      // Jet is done, process can be
     STATUS_WAITING_FUEL,// Jet is waiting to refuel (for Q3)
     
-    STATUS_IN_QUEUE,    // Jet is waiting in a queue
     STATUS_LANDING_CMD, // Command sent, waiting for STATUS_LANDED
     
     // --- NEW FOR REFUELING ---
@@ -72,3 +73,4 @@ struct JetFeedbackMessage
 };
 
 #endif // UTILS_H
+

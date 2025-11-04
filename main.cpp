@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h> 
+#include <vector>     // --- NEW: For stats
+#include <time.h>     // --- NEW: For stats
+#include <fcntl.h>    // --- NEW: For console loop
+#include <errno.h>    // --- NEW: For console loop
 
 // --- Student Information ---
 const char* STUDENT_NAME = "Student Name";
@@ -18,12 +22,27 @@ static int jet_counter = 0;
 SchedulerState scheduler;
 FILE* log_file = NULL;
 
-// ... (log_event function is unchanged) ...
+// --- NEW: Global state for statistics ---
+time_t simulation_start_time;
+struct JetStats {
+    pid_t pid;
+    double turnaround_time;
+    double waiting_time;
+    double response_time;
+};
+std::vector<JetStats> completed_jet_stats;
+pthread_mutex_t stats_lock; // To protect the stats vector
+
+
+/**
+ * @brief MODIFIED: Reverted - prints to console AND log file
+ */
 void log_event(const char* format, ...) {
     va_list args;
     va_start(args, format);
-    vprintf(format, args);
+    vprintf(format, args); // Print to console
     va_end(args);
+    
     if (log_file) {
         time_t now = time(0);
         tm *ltm = localtime(&now);
@@ -31,51 +50,65 @@ void log_event(const char* format, ...) {
         snprintf(time_buf, 20, "[%02d:%02d:%02d] ", ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
         fprintf(log_file, "%s", time_buf);
         va_start(args, format);
-        vfprintf(log_file, format, args);
+        vfprintf(log_file, format, args); // Print to log file
         va_end(args);
         fflush(log_file);
     }
 }
 
 
-// ... (run_jet_generator function is unchanged) ...
+/**
+ * @brief MODIFIED: Creates 8 jets
+ * MODIFIED: Removed all cout statements
+ */
 void run_jet_generator() {
-    cout << "[Jet Generator " << getpid() << "]: Starting..." << endl;
+    // --- REMOVED cout ---
     
-    for (int i = 0; i < 5; i++) {
-        int wait_time = (rand() % 2) + 1; 
-        sleep(wait_time);
+    // --- MODIFIED: Create a "traffic jam" to test all queues ---
+    
+    // Total 8 jets, 1 per second
+    int fuel_levels[] = {
+        60, // Standard jet
+        20, // EMERGENCY jet (will hit 10 fuel while waiting)
+        60, // Standard jet
+        40, // REFUEL jet (will hit 25 fuel while waiting)
+        60, // Standard jet (will be demoted by RR)
+        60, // Standard jet (will be demoted by RR)
+        18, // EMERGENCY jet
+        50  // REFUEL jet
+    };
+    
+    for (int i = 0; i < 8; i++) {
+        sleep(1); // Spawn a jet every second
+        int initial_fuel = fuel_levels[i];
 
-        int initial_fuel;
-        
-        if (i == 2) { 
-            initial_fuel = 15; 
-            cout << "[Jet Generator " << getpid() << "]: --- FORCING EMERGENCY JET ---" << endl;
+        if (initial_fuel <= 20) { 
+            // --- REMOVED cout ---
         } 
-        else if (i == 3) { 
-            initial_fuel = 35; 
-            cout << "[Jet Generator " << getpid() << "]: --- FORCING REFUEL JET ---" << endl;
-        } else {
-            initial_fuel = 60; 
+        else if (initial_fuel <= 40) { 
+            // --- REMOVED cout ---
         }
 
         JetMessage new_jet_request = { initial_fuel };
-        cout << "[Jet Generator " << getpid() << "]: Sending request for new jet with fuel " << initial_fuel << endl;
+        // --- REMOVED cout ---
              
         if (write(generator_pipe_write_end, &new_jet_request, sizeof(JetMessage)) == -1) {
             perror("Generator: Pipe write error");
         }
     }
 
-    cout << "[Jet Generator " << getpid() << "]: Finished creating jets. Exiting." << endl;
+    // --- REMOVED cout ---
     close(generator_pipe_write_end);
 }
 
-// ... (display_loop is unchanged) ...
+/**
+ * @brief MODIFIED: Reverted - calls print_queues normally
+ */
 void* display_loop(void* arg) {
     log_event("[ATC Display Thread]: Display started.\n");
     SchedulerState* s = (SchedulerState*)arg;
     while (keep_running) {
+        // --- MODIFIED: `scheduler_print_queues` now prints to console by default ---
         scheduler_print_queues(s, log_file);
         sleep(2);
     }
@@ -88,102 +121,223 @@ void* scheduler_loop(void* arg) {
     log_event("[Scheduler Thread]: Clock started.\n");
     SchedulerState* s = (SchedulerState*)arg;
     while (keep_running) {
-        sleep(1);
+        sleep(1); // 1-second tick
         scheduler_tick(s, log_file);
     }
     log_event("[Scheduler Thread]: Clock shutting down.\n");
     return NULL;
 }
 
-// ... (console_loop is unchanged) ...
+/**
+ * @brief MODIFIED: Interactive console loop
+ * Uses select() with a timeout to remain non-blocking
+ * and prints a prompt "ATC-CMD>" for a user-friendly experience.
+ */
 void* console_loop(void* arg) {
+    // --- MODIFIED: Print initial messages to console directly ---
+    printf("[Console Thread]: Ready for commands.\n");
+    printf("Commands: status, new_jet <fuel>, force_emergency <pid>, boost_priority <pid>, change_quantum <val>, pause_sim, resume_sim, exit\n");
     log_event("[Console Thread]: Ready for commands.\n");
-    cout << "Commands: status, new_jet <fuel>, force_emergency <pid>, boost_priority <pid>, change_quantum <val>, pause_sim, resume_sim, exit" << endl;
     SchedulerState* s = (SchedulerState*)arg;
     
+    cout << "\nATC-CMD> "; // Print initial prompt
+    fflush(stdout);
+
     while (keep_running) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
         FD_SET(STDIN_FILENO, &read_fds);
         
-        struct timeval timeout = { 1, 0 };
+        // 1 second timeout
+        struct timeval timeout = { 1, 0 }; 
         int activity = select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &timeout);
         
+        if (activity < 0) {
+            if (errno == EINTR) continue; // Interrupted by signal, just continue
+            perror("Console select");
+            break;
+        }
+
+        // If activity > 0, STDIN has input
         if (activity > 0 && FD_ISSET(STDIN_FILENO, &read_fds)) {
             char buffer[256];
-            if (fgets(buffer, sizeof(buffer), stdin) == NULL) continue;
-            buffer[strcspn(buffer, "\n")] = 0;
+            if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                // Ctrl+D pressed or error
+                printf("\n[Console]: STDIN closed. Shutting down.\n");
+                log_event("[Console]: STDIN closed. Shutting down.\n");
+                keep_running = false;
+                break;
+            }
+            
+            buffer[strcspn(buffer, "\n")] = 0; // Remove newline
             
             int arg1;
             
             if (sscanf(buffer, "new_jet %d", &arg1) == 1) {
                 if (arg1 > 0) {
+                    printf("[Console]: Requesting new jet with %d fuel.\n", arg1);
                     log_event("[Console]: Requesting new jet with %d fuel.\n", arg1);
                     JetMessage new_jet_request = { arg1 };
                     if (write(console_pipe[1], &new_jet_request, sizeof(JetMessage)) == -1) {
+                        printf("[Console]: ERROR: Failed to send new_jet request to main thread.\n");
                         log_event("[Console]: ERROR: Failed to send new_jet request to main thread.\n");
                     }
                 } else {
+                    printf("[Console]: Fuel must be > 0.\n");
                     log_event("[Console]: Fuel must be > 0.\n");
                 }
             }
             else if (sscanf(buffer, "force_emergency %d", &arg1) == 1) {
+                printf("[Console]: Executing 'force_emergency %d'\n", arg1);
                 log_event("[Console]: Executing 'force_emergency %d'\n", arg1);
                 pthread_mutex_lock(&s->lock);
                 scheduler_handle_emergency_unsafe(s, (pid_t)arg1, 1, log_file);
                 pthread_mutex_unlock(&s->lock);
             
             } else if (sscanf(buffer, "boost_priority %d", &arg1) == 1) {
+                printf("[Console]: Executing 'boost_priority %d'\n", arg1);
                 log_event("[Console]: Executing 'boost_priority %d'\n", arg1);
                 pthread_mutex_lock(&s->lock);
                 int q, idx;
                 SchedulerJet* jet = scheduler_find_jet_unsafe(s, (pid_t)arg1, &q, &idx);
                 if (jet) {
-                    if (q == 3) scheduler_move_jet_unsafe(s, 3, idx, 2, log_file);
-                    else if (q == 2) scheduler_move_jet_unsafe(s, 2, idx, 1, log_file);
-                    else log_event("[Console]: Jet %d already in Q1.\n", arg1);
+                    if (q == 3) {
+                        printf("[Console]: Jet %d boosted from Q3 to Q2.\n", arg1);
+                        scheduler_move_jet_unsafe(s, 3, idx, 2, log_file);
+                    } else if (q == 2) {
+                        printf("[Console]: Jet %d boosted from Q2 to Q1.\n", arg1);
+                        scheduler_move_jet_unsafe(s, 2, idx, 1, log_file);
+                    } else {
+                        printf("[Console]: Jet %d already in Q1.\n", arg1);
+                    }
                 } else {
-                    log_event("[Console]: Jet %d not found.\n", arg1);
+                    printf("[Console]: Jet %d not found.\n", arg1);
                 }
                 pthread_mutex_unlock(&s->lock);
             
             } else if (sscanf(buffer, "change_quantum %d", &arg1) == 1) {
                 if (arg1 > 0) {
+                    printf("[Console]: Executing 'change_quantum %d'\n", arg1);
                     log_event("[Console]: Executing 'change_quantum %d'\n", arg1);
                     pthread_mutex_lock(&s->lock);
                     s->q2_rr_quantum = arg1;
                     pthread_mutex_unlock(&s->lock);
                 } else {
+                    printf("[Console]: Quantum must be > 0.\n");
                     log_event("[Console]: Quantum must be > 0.\n");
                 }
 
             } else if (strcmp(buffer, "pause_sim") == 0) {
+                printf("[Console]: Executing 'pause_sim'\n");
                 log_event("[Console]: Executing 'pause_sim'\n");
                 pthread_mutex_lock(&s->lock);
                 s->is_paused = true;
                 pthread_mutex_unlock(&s->lock);
 
             } else if (strcmp(buffer, "resume_sim") == 0) {
+                printf("[Console]: Executing 'resume_sim'\n");
                 log_event("[Console]: Executing 'resume_sim'\n");
                 pthread_mutex_lock(&s->lock);
                 s->is_paused = false;
                 pthread_mutex_unlock(&s->lock);
             
             } else if (strcmp(buffer, "status") == 0) {
+                printf("[Console]: Forcing display refresh.\n");
                 log_event("[Console]: Forcing display refresh.\n");
-                scheduler_print_queues(s, log_file);
+                // --- MODIFIED: `scheduler_print_queues` prints to console ---
+                scheduler_print_queues(s, log_file); 
             
             } else if (strcmp(buffer, "exit") == 0) {
+                printf("[Console]: Exit command received. Shutting down.\n");
                 log_event("[Console]: Exit command received. Shutting down.\n");
                 keep_running = false;
                 
             } else if (strlen(buffer) > 0) {
+                printf("[Console]: Unknown command '%s'\n", buffer);
                 log_event("[Console]: Unknown command '%s'\n", buffer);
             }
+
+            // Print prompt for next command
+            if (keep_running) {
+                cout << "ATC-CMD> "; 
+                fflush(stdout);
+            }
         }
+        // If select times out (activity == 0), loop repeats
     }
     log_event("[Console Thread]: Shutting down.\n");
     return NULL;
+}
+
+
+/**
+ * @brief NEW: Prints the final statistics summary
+ * --- MODIFIED: Now also prints to console
+ */
+void print_final_summary()
+{
+    time_t simulation_end_time = time(NULL);
+    double total_simulation_time = difftime(simulation_end_time, simulation_start_time);
+    if (total_simulation_time < 1) total_simulation_time = 1; // Avoid division by zero
+
+    char buffer[2048]; // Buffer to hold the summary string
+    char* buf_ptr = buffer;
+    int len = 0;
+
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\n\n========================================================\n");
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "           FINAL SIMULATION SUMMARY\n");
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "========================================================\n\n");
+    
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Total Simulation Time: %.0f seconds\n", total_simulation_time);
+    
+    double avg_turnaround = 0, avg_wait = 0, avg_response = 0;
+    
+    pthread_mutex_lock(&stats_lock);
+    int jet_count = completed_jet_stats.size();
+    
+    if (jet_count > 0) {
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\n--- Individual Jet Stats ---\n");
+        for (const auto& stats : completed_jet_stats) {
+            len += snprintf(buf_ptr + len, sizeof(buffer) - len, "  - Jet %d: Turnaround=%.0fs, Wait=%.0fs, Response=%.0fs\n", 
+                (int)stats.pid, stats.turnaround_time, stats.waiting_time, stats.response_time);
+            avg_turnaround += stats.turnaround_time;
+            avg_wait += stats.waiting_time;
+            avg_response += stats.response_time;
+        }
+        
+        avg_turnaround /= jet_count;
+        avg_wait /= jet_count;
+        avg_response /= jet_count;
+
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\n--- Average Stats ---\n");
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Average Turnaround Time: %.2f s\n", avg_turnaround);
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Average Waiting Time:    %.2f s\n", avg_wait);
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Average Response Time:   %.2f s\n", avg_response);
+
+    } else {
+        len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\nNo jets completed simulation.\n");
+    }
+    pthread_mutex_unlock(&stats_lock);
+
+    pthread_mutex_lock(&scheduler.lock);
+    int context_switches = scheduler.total_context_switches;
+    double runway_busy_time = scheduler.total_runway_busy_time;
+    pthread_mutex_unlock(&scheduler.lock);
+
+    double cpu_utilization = (runway_busy_time / total_simulation_time) * 100.0;
+
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\n--- System Stats ---\n");
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Total Context Switches:  %d\n", context_switches);
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "Runway Utilization (CPU): %.2f %% (%.0f / %.0f s)\n", 
+        cpu_utilization, runway_busy_time, total_simulation_time);
+    len += snprintf(buf_ptr + len, sizeof(buffer) - len, "\n========================================================\n");
+
+    // --- NEW: Print the entire buffer to console and log file ---
+    printf("%s", buffer);
+    if (log_file) {
+        fprintf(log_file, "%s", buffer);
+        fflush(log_file);
+    }
 }
 
 
@@ -202,19 +356,21 @@ int main() {
     cin.ignore(1000, '\n'); 
     srand(roll_no_seed);
     
-    // --- THIS IS THE FIX ---
     char log_filename[100];
     snprintf(log_filename, 100, "%s_skywatch_log.txt", STUDENT_ROLLNO);
-    log_file = fopen(log_filename, "a"); // "w" (write) changed to "a" (append)
+    log_file = fopen(log_filename, "w"); // Use "w" to overwrite old logs
     if (log_file == NULL) {
         perror("Failed to open log file"); return 1;
     }
-    // --- END FIX ---
     
+    // --- MODIFIED: Reverted - use log_event to print to console ---
     log_event("\n--- Simulation Started by %s (%s) ---\n", STUDENT_NAME, STUDENT_ROLLNO);
     log_event("Seed set to %d.\n", roll_no_seed);
     
     scheduler_init(&scheduler);
+    pthread_mutex_init(&stats_lock, NULL); // --- NEW: Init stats lock
+    simulation_start_time = time(NULL);    // --- NEW: Record start time
+    
     // ... (Seed explanation comment) ...
     // Using the roll number as a seed (srand) ensures that
     // the sequence of random numbers (rand) is unique to me.
@@ -311,6 +467,7 @@ int main() {
         auto create_new_jet = [&](int initial_fuel) {
             log_event("[ATC Tower]: Creating new jet with %d fuel.\n", initial_fuel);
             int atc_to_jet_pipe[2], jet_to_atc_pipe[2];
+            // --- FIX 1: Typo jet_to_ata_pipe -> jet_to_atc_pipe ---
             if (pipe(atc_to_jet_pipe) == -1 || pipe(jet_to_atc_pipe) == -1) {
                 log_event("ERROR: Failed to create jet pipes.\n");
                 return;
@@ -344,7 +501,7 @@ int main() {
             close(jet_to_atc_pipe[1]);
             log_event("[ATC Tower]: Forked new jet (PID %d)\n", jet_pid);
             scheduler_add_jet(&scheduler, jet_pid, jet_to_atc_pipe[0], 
-                              atc_to_jet_pipe[1], initial_fuel);
+                              atc_to_jet_pipe[1], initial_fuel, log_file);
             active_jet_count++;
         };
         
@@ -368,11 +525,12 @@ int main() {
             ssize_t bytes_read = read(console_pipe[0], &received_jet_request, sizeof(JetMessage));
             if (bytes_read > 0) {
                 jet_counter++; 
+                // --- FIX 2: Typo initial_ael -> initial_fuel ---
                 create_new_jet(received_jet_request.initial_fuel);
             }
         }
         
-        // Check jet feedback (unchanged)
+        // Check jet feedback
         pthread_mutex_lock(&scheduler.lock);
         for (int q = 0; q < 3; q++) {
             SchedulerJet* queue = (q == 0) ? scheduler.queue1 : (q == 1) ? scheduler.queue2 : scheduler.queue3;
@@ -385,6 +543,29 @@ int main() {
                     if (bytes > 0) {
                         if (feedback.status == STATUS_LANDED) {
                             pid_t landed_pid = jet->pid;
+
+                            // --- NEW: Capture stats BEFORE clearing jet data ---
+                            SchedulerJet* landed_jet = scheduler_find_jet_unsafe(&scheduler, landed_pid, NULL, NULL);
+                            if (landed_jet) {
+                                time_t completion_time = time(NULL);
+                                JetStats stats;
+                                stats.pid = landed_pid;
+                                stats.turnaround_time = difftime(completion_time, landed_jet->arrival_time);
+                                stats.waiting_time = landed_jet->total_wait_time;
+                                
+                                if (landed_jet->first_run_time != 0) {
+                                    stats.response_time = difftime(landed_jet->first_run_time, landed_jet->arrival_time);
+                                } else {
+                                    // Should not happen if it landed, but as a fallback:
+                                    stats.response_time = stats.turnaround_time;
+                                }
+                                
+                                pthread_mutex_lock(&stats_lock);
+                                completed_jet_stats.push_back(stats);
+                                pthread_mutex_unlock(&stats_lock);
+                            }
+                            // --- End of stats capture ---
+
                             scheduler_jet_landed_unsafe(&scheduler, landed_pid, log_file); 
                             waitpid(landed_pid, NULL, 0); 
                             active_jet_count--;
@@ -439,6 +620,9 @@ int main() {
     
     pthread_join(display_thread_id, NULL);
     pthread_join(scheduler_thread_id, NULL);
+    
+    // Send a newline to console thread to unblock fgets
+    write(STDIN_FILENO, "\n", 1); 
     pthread_cancel(console_thread_id);
     pthread_join(console_thread_id, NULL);
     
@@ -448,8 +632,14 @@ int main() {
     close(console_pipe[0]); 
     
     scheduler_destroy(&scheduler);
+    pthread_mutex_destroy(&stats_lock); // --- NEW: Destroy stats lock
+
+    // --- NEW: Print final summary before closing log ---
+    print_final_summary();
+
     if (log_file) fclose(log_file);
 
     cout << "[ATC Tower]: Simulation finished. Log file created. Exiting." << endl;
     return 0;
 }
+

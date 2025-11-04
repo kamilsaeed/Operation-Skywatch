@@ -2,12 +2,13 @@
 #define SCHEDULER_H
 
 #include "utils.h"
+#include <time.h> // --- NEW: For stats
 
 // --- Assignment Constants ---
 #define RR_QUANTUM 5        // Default 5-second time quantum for Q2
-#define AGING_THRESHOLD 10  // 15-second wait in Q3 before promotion
+#define AGING_THRESHOLD 10  // 10-second wait in Q3 before promotion
 
-// ... (SchedulerJet struct is unchanged) ...
+// --- MODIFIED: Added fields for statistics ---
 struct SchedulerJet {
     pid_t pid;
     int atc_read_fd;
@@ -16,9 +17,14 @@ struct SchedulerJet {
     JetStatus status;
     int time_on_runway;
     int time_in_q3;
+
+    // --- NEW: Fields for statistics ---
+    time_t arrival_time;
+    time_t first_run_time; // 0 if not run yet
+    int total_wait_time;
 };
 
-// ... (SchedulerState struct is unchanged) ...
+// --- MODIFIED: Added fields for statistics ---
 struct SchedulerState 
 {
     SchedulerJet queue1[MAX_JETS]; // Q1: SRTF
@@ -37,13 +43,20 @@ struct SchedulerState
     bool is_paused;     
     
     pthread_mutex_t lock;
+
+    // --- NEW: Fields for statistics ---
+    int total_context_switches;
+    double total_runway_busy_time; // in seconds
 };
 
 // --- Function Declarations ---
 
 void scheduler_init(SchedulerState* s);
-void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, int fuel);
+void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, int fuel, FILE* log_file);
+
+// --- MODIFIED: Reverted - 2 arguments, console print is back on
 void scheduler_print_queues(SchedulerState* s, FILE* log_file);
+
 void scheduler_destroy(SchedulerState* s);
 void scheduler_tick(SchedulerState* s, FILE* log_file); 
 void scheduler_jet_landed_unsafe(SchedulerState* s, pid_t pid, FILE* log_file); 
@@ -57,3 +70,4 @@ SchedulerJet* scheduler_find_jet_unsafe(SchedulerState* s, pid_t pid, int* out_q
 bool scheduler_move_jet_unsafe(SchedulerState* s, int from_q, int from_idx, int to_q, FILE* log_file);
 
 #endif // SCHEDULER_H
+

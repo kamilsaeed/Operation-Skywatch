@@ -56,6 +56,7 @@ bool scheduler_move_jet_unsafe(SchedulerState* s, int from_q, int from_idx, int 
         return false;
     }
 
+    // Use memcpy to move all data, including new stats
     memcpy(&to_queue_arr[to_q - 1][to_slot], jet_to_move, sizeof(SchedulerJet));
     memset(jet_to_move, 0, sizeof(SchedulerJet));
     
@@ -66,7 +67,7 @@ bool scheduler_move_jet_unsafe(SchedulerState* s, int from_q, int from_idx, int 
     to_queue_arr[to_q - 1][to_slot].status = (to_q == 3) ? jet_to_move->status : STATUS_IN_QUEUE; // Preserve refuel status if moving to Q3
     if (to_q != 3) to_queue_arr[to_q - 1][to_slot].status = STATUS_IN_QUEUE; // Always reset when promoting
     
-    to_queue_arr[to_q - 1][to_slot].time_in_q3 = 0; // Reset timer
+    to_queue_arr[to_q - 1][to_slot].time_in_q3 = 0; // Reset Q3 timer
     to_queue_arr[to_q - 1][to_slot].time_on_runway = 0;
     
     log_scheduler_event(log_file, "[Scheduler]: Jet %d moved from Q%d to Q%d.\n", pid, from_q, to_q);
@@ -88,6 +89,8 @@ static void scheduler_preempt_runway_unsafe(SchedulerState* s, FILE* log_file) {
     s->is_runway_busy = false;
     s->runway_jet_pid = 0;
     s->runway_jet_q = 0;
+
+    s->total_context_switches++; // Count preemption as a context switch
 }
 
 
@@ -109,6 +112,10 @@ void scheduler_init(SchedulerState* s) {
     s->q2_rr_quantum = RR_QUANTUM;
     s->is_paused = false;
 
+    // --- NEW: Init stats ---
+    s->total_context_switches = 0;
+    s->total_runway_busy_time = 0;
+
     if (pthread_mutex_init(&s->lock, NULL) != 0) {
         perror("Scheduler: Failed to initialize mutex");
         exit(1);
@@ -119,7 +126,7 @@ void scheduler_destroy(SchedulerState* s) {
     pthread_mutex_destroy(&s->lock);
 }
 
-void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, int fuel) {
+void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, int fuel, FILE* log_file) {
     pthread_mutex_lock(&s->lock);
 
     int slot = find_empty_slot(s->queue2);
@@ -132,8 +139,16 @@ void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, 
         s->queue2[slot].status = STATUS_IN_QUEUE;
         s->queue2[slot].time_on_runway = 0;
         s->queue2[slot].time_in_q3 = 0;
+        
+        // --- NEW: Init stats for jet ---
+        s->queue2[slot].arrival_time = time(NULL);
+        s->queue2[slot].first_run_time = 0; // 0 indicates not run yet
+        s->queue2[slot].total_wait_time = 0;
+
         s->q2_count++;
+        log_scheduler_event(log_file, "[Scheduler]: Jet %d added to Q2. (Fuel: %d)\n", pid, fuel);
     } else {
+        log_scheduler_event(log_file, "[Scheduler]: ERROR: Q2 is full. Jet %d rejected.\n", pid);
         close(read_fd);
         close(write_fd);
     }
@@ -141,6 +156,7 @@ void scheduler_add_jet(SchedulerState* s, pid_t pid, int read_fd, int write_fd, 
     pthread_mutex_unlock(&s->lock);
 }
 
+// --- MODIFIED: Reverted - 2 arguments, console print is back on
 void scheduler_print_queues(SchedulerState* s, FILE* log_file) {
     pthread_mutex_lock(&s->lock);
     
@@ -184,13 +200,13 @@ void scheduler_print_queues(SchedulerState* s, FILE* log_file) {
     else {
         for (int i = 0; i < MAX_JETS; i++)
             if (s->queue3[i].pid != 0) {
-                // Modified to show status code
                 cout << "  - Jet PID: " << s->queue3[i].pid 
                      << " (Wait: " << s->queue3[i].time_in_q3 << "s"
                      << ", Status: " << s->queue3[i].status << ")" << endl;
             }
     }
     cout << "========================================================" << endl;
+
 
     // --- Log to File (a snapshot) ---
     log_scheduler_event(log_file, "[Status]: Q1=%d, Q2=%d, Q3=%d, Runway=%s (Jet %d)\n",
@@ -210,34 +226,45 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
         return;
     }
 
-    // --- 1. AGING (Q3 -> Q2) ---
+    // --- 1. UPDATE STATS (Wait Time, Runway Time) ---
+    if (s->is_runway_busy) {
+        s->total_runway_busy_time++;
+    }
+
+    SchedulerJet* queues[] = { s->queue1, s->queue2, s->queue3 };
+    for (int q = 0; q < 3; q++) {
+        for (int i = 0; i < MAX_JETS; i++) {
+            SchedulerJet* jet = &queues[q][i];
+            // Increment wait time if in any queue and not currently landing/refueling
+            if (jet->pid != 0 && (jet->status == STATUS_IN_QUEUE || jet->status == STATUS_WAITING_FUEL)) {
+                jet->total_wait_time++; // Increment wait time if in queue
+            }
+        }
+    }
+
+
+    // --- 2. AGING (Q3 -> Q2) ---
     for (int i = 0; i < MAX_JETS; i++) {
         SchedulerJet* jet = &s->queue3[i];
         
-        // --- THIS IS THE FIX ---
-        // Age any jet that is waiting, either for landing (IN_QUEUE) 
-        // or for refueling (WAITING_FUEL)
         if (jet->pid != 0 && (jet->status == STATUS_IN_QUEUE || jet->status == STATUS_WAITING_FUEL)) {
             jet->time_in_q3++;
             if (jet->time_in_q3 > AGING_THRESHOLD) {
                 log_scheduler_event(log_file, "[Scheduler]: AGING Jet %d from Q3 to Q2.\n", jet->pid);
-                // Preserve refuel status when moving
                 JetStatus old_status = jet->status;
                 if (scheduler_move_jet_unsafe(s, 3, i, 2, log_file)) {
-                    // Find it in Q2 and set its status
                     int q_new, idx_new;
                     SchedulerJet* jet_in_q2 = scheduler_find_jet_unsafe(s, jet->pid, &q_new, &idx_new);
                     if (jet_in_q2) {
-                        jet_in_q2->status = old_status; // Keep its refuel request
+                        jet_in_q2->status = old_status; 
                     }
                 }
             }
         }
     }
-    // --- END FIX ---
 
 
-    // --- 2. RUNWAY CHECK (RR Demotion) ---
+    // --- 3. RUNWAY CHECK (RR Demotion) ---
     if (s->is_runway_busy && s->runway_jet_q == 2) {
         SchedulerJet* jet = scheduler_find_jet_unsafe(s, s->runway_jet_pid, NULL, NULL);
         if (jet) {
@@ -248,23 +275,23 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
                 s->is_runway_busy = false;
                 s->runway_jet_pid = 0;
                 s->runway_jet_q = 0;
+                s->total_context_switches++; // Count RR demotion as context switch
                 
                 int q, idx;
                 if (scheduler_find_jet_unsafe(s, jet->pid, &q, &idx)) {
                     scheduler_move_jet_unsafe(s, q, idx, 3, log_file);
-                    // After moving, its status is set to STATUS_IN_QUEUE by move_jet
                 }
             }
         }
     }
     
-    // --- 3. DISPATCH (if runway is free) ---
+    // --- 4. DISPATCH (if runway is free) ---
     if (s->is_runway_busy) {
         pthread_mutex_unlock(&s->lock);
         return;
     }
 
-    // 3a. Check Queue 1 (SRTF)
+    // 4a. Check Queue 1 (SRTF)
     if (s->q1_count > 0) {
         int srtf_jet_idx = -1, min_fuel = 9999;
         for (int i = 0; i < MAX_JETS; i++) {
@@ -280,6 +307,8 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
             if (write(jet->atc_write_fd, &cmd, sizeof(cmd)) != -1) {
                 s->is_runway_busy = true; s->runway_jet_pid = jet->pid; s->runway_jet_q = 1;
                 jet->status = STATUS_LANDING_CMD; 
+                if (jet->first_run_time == 0) jet->first_run_time = time(NULL); // Set response time
+                s->total_context_switches++; // Count dispatch
                 log_scheduler_event(log_file, "[Scheduler]: Runway assigned to EMERGENCY Jet %d (from Q1).\n", jet->pid);
             }
             pthread_mutex_unlock(&s->lock);
@@ -287,8 +316,7 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
         }
     }
     
-    // 3b. Check Queue 2 (RR)
-    // --- MODIFIED: Q2 now services refueling requests from aged jets ---
+    // 4b. Check Queue 2 (RR)
     if (s->q2_count > 0) {
         int jet_idx = -1;
         // First, check for any promoted refuel requests
@@ -298,7 +326,6 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
                 break; 
             }
         }
-        
         // If no refuel requests, find a normal landing request
         if (jet_idx == -1) {
             for (int i = 0; i < MAX_JETS; i++) {
@@ -311,8 +338,6 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
 
         if (jet_idx != -1) {
             SchedulerJet* jet = &s->queue2[jet_idx];
-            
-            // Send the correct command based on status
             AtcCommandMessage cmd;
             if (jet->status == STATUS_WAITING_FUEL) {
                 cmd.command = CMD_REFUEL;
@@ -327,56 +352,15 @@ void scheduler_tick(SchedulerState* s, FILE* log_file) {
 
             if (write(jet->atc_write_fd, &cmd, sizeof(cmd)) != -1) {
                 s->is_runway_busy = true; s->runway_jet_pid = jet->pid; s->runway_jet_q = 2;
+                if (jet->first_run_time == 0) jet->first_run_time = time(NULL); // Set response time
+                s->total_context_switches++; // Count dispatch
             }
             pthread_mutex_unlock(&s->lock);
             return;
         }
     }
     
-    // 3c. Check Queue 3 (Refuel - FCFS) 
-    if (s->q3_count > 0) {
-        int refuel_jet_idx = -1;
-        for (int i = 0; i < MAX_JETS; i++) {
-            if (s->queue3[i].pid != 0 && s->queue3[i].status == STATUS_WAITING_FUEL) {
-                refuel_jet_idx = i;
-                break; 
-            }
-        }
-        
-        if (refuel_jet_idx != -1) {
-            SchedulerJet* jet = &s->queue3[refuel_jet_idx];
-            AtcCommandMessage cmd = { CMD_REFUEL };
-            if (write(jet->atc_write_fd, &cmd, sizeof(cmd)) != -1) {
-                s->is_runway_busy = true; s->runway_jet_pid = jet->pid; s->runway_jet_q = 3;
-                jet->status = STATUS_REFUELING; 
-                log_scheduler_event(log_file, "[Scheduler]: Runway assigned to Jet %d for REFUELING (from Q3).\n", jet->pid);
-            }
-            pthread_mutex_unlock(&s->lock);
-            return;
-        }
-    }
-
-    // 3d. Check Queue 3 (Land - FCFS)
-    if (s->q3_count > 0) {
-        int fcfs_jet_idx = -1;
-        for (int i = 0; i < MAX_JETS; i++) {
-            if (s->queue3[i].pid != 0 && s->queue3[i].status == STATUS_IN_QUEUE) {
-                fcfs_jet_idx = i;
-                break;
-            }
-        }
-        if (fcfs_jet_idx != -1) {
-            SchedulerJet* jet = &s->queue3[fcfs_jet_idx];
-            AtcCommandMessage cmd = { CMD_START_LANDING };
-            if (write(jet->atc_write_fd, &cmd, sizeof(cmd)) != -1) {
-                s->is_runway_busy = true; s->runway_jet_pid = jet->pid; s->runway_jet_q = 3;
-                jet->status = STATUS_LANDING_CMD;
-                log_scheduler_event(log_file, "[Scheduler]: Runway assigned to Jet %d for LANDING (from Q3).\n", jet->pid);
-            }
-            pthread_mutex_unlock(&s->lock);
-            return;
-        }
-    }
+    // Q3 is standby/aging only. No dispatch from Q3.
 
     pthread_mutex_unlock(&s->lock);
 }
@@ -389,11 +373,13 @@ void scheduler_jet_landed_unsafe(SchedulerState* s, pid_t pid, FILE* log_file) {
     }
     
     int q, idx;
+    // Find the jet to clear its data
     SchedulerJet* jet = scheduler_find_jet_unsafe(s, pid, &q, &idx);
     
     if (jet) {
         close(jet->atc_read_fd); close(jet->atc_write_fd);
         
+        // Clear the jet's slot in the queue
         if (q == 1) {
             memset(&s->queue1[idx], 0, sizeof(SchedulerJet)); s->q1_count--;
         } else if (q == 2) {
@@ -417,6 +403,7 @@ void scheduler_handle_emergency_unsafe(SchedulerState* s, pid_t pid, int current
     }
     
     jet->fuel = current_fuel;
+    jet->status = STATUS_IN_QUEUE; // Ensure it's ready to run
 
     if (q != 1) {
         log_scheduler_event(log_file, "[Scheduler]: Jet %d moved to Q1 (Emergency).\n", pid);
@@ -424,6 +411,7 @@ void scheduler_handle_emergency_unsafe(SchedulerState* s, pid_t pid, int current
         jet = scheduler_find_jet_unsafe(s, pid, &q, &idx); 
         if (!jet) return;
         jet->fuel = current_fuel;
+        jet->status = STATUS_IN_QUEUE; // Set status again after move
     }
 
     if (s->is_runway_busy && s->runway_jet_pid != pid) {
@@ -468,3 +456,4 @@ void scheduler_handle_refuel_request_unsafe(SchedulerState* s, pid_t pid, int cu
         log_scheduler_event(log_file, "[Scheduler]: Jet %d is waiting in Q3 to refuel.\n", pid);
     }
 }
+
